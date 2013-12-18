@@ -25,6 +25,22 @@ Then, for each remaining unmatched column node j,
 After having repeated this for all unmatched columns, the search for shortest augmenting paths starts with respect to the current matching.
 */
 #undef __FUNCT__
+#define __FUNCT__ "CheckUnmatched_SeqAIJ"
+static PetscErrorCode CheckUnmatched_SeqAIJ(PetscInt n, const PetscInt match[], const PetscInt matchR[])
+{
+  PetscInt       unc = 0, unr = 0, c;
+  PetscErrorCode ierr;
+
+  PetscFunctionBegin;
+  for (c = 0; c < n; ++c) {
+    if (match[c]  <  0) ++unc;
+    if (matchR[c] <  0) ++unr;
+  }
+  ierr = PetscPrintf(PETSC_COMM_SELF, "Unmatched columns %d rows %d\n", unc, unr);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+#undef __FUNCT__
 #define __FUNCT__ "MatComputeMatching_SeqAIJ"
 static PetscErrorCode MatComputeMatching_SeqAIJ(Mat A, IS *permR, Vec *scalR, IS *permC, Vec *scalC)
 {
@@ -41,10 +57,11 @@ static PetscErrorCode MatComputeMatching_SeqAIJ(Mat A, IS *permR, Vec *scalR, IS
   Vec              colMax;
   PetscScalar     *a_j, *sr, *sc;
   PetscReal       *weights /* c_ij */, *u /* u_i */, *v /* v_j */, eps = PETSC_SQRT_MACHINE_EPSILON;
-  PetscInt         r, c, r1, c1;
+  PetscInt         debug = 0, r, c, r1, c1;
   PetscErrorCode   ierr;
 
   PetscFunctionBegin;
+  ierr = PetscOptionsGetInt(NULL, "-debug", &debug, NULL);CHKERRQ(ierr);
   ierr = MatGetVecs(A, NULL, &colMax);CHKERRQ(ierr);
   ierr = MatGetRowMaxAbs(A, colMax, NULL);CHKERRQ(ierr);
   ierr = PetscMalloc2(n, &match, m, &matchR);CHKERRQ(ierr);
@@ -55,7 +72,10 @@ static PetscErrorCode MatComputeMatching_SeqAIJ(Mat A, IS *permR, Vec *scalR, IS
   ierr = VecGetArray(colMax, &a_j);CHKERRQ(ierr);
   for (c = 0; c < n; ++c) {
     for (r = ia[c]; r < ia[c+1]; ++r) {
-      weights[r] = log(a_j[c]/PetscRealPart(a[r]));
+      PetscReal ar = PetscAbsScalar(a[r]);
+
+      if (ar == 0.0) weights[r] = PETSC_MAX_REAL;
+      else           weights[r] = log(a_j[c]/ar);
     }
   }
   /* Compute local row weights */
@@ -73,18 +93,23 @@ static PetscErrorCode MatComputeMatching_SeqAIJ(Mat A, IS *permR, Vec *scalR, IS
     }
   }
   /* Match columns */
+  ierr = CheckUnmatched_SeqAIJ(n, match, matchR);CHKERRQ(ierr);
   for (r = 0; r < m; ++r) matchR[r] = -1;
   for (c = 0; c < n; ++c) {
+    if (debug) {ierr = PetscPrintf(PETSC_COMM_SELF, "Row %d\n  Weights:", c);CHKERRQ(ierr);}
     for (r = ia[c]; r < ia[c+1]; ++r) {
       PetscReal weight = weights[r] - u[ja[r]] - v[c];
+      if (debug) {ierr = PetscPrintf(PETSC_COMM_SELF, " %g", weight);CHKERRQ(ierr);}
       if ((weight <= eps) && (matchR[ja[r]] < 0)) {
-        ierr = PetscPrintf(PETSC_COMM_SELF, "Matched %d -- %d\n", c, ja[r]);CHKERRQ(ierr);
+        if (debug) {ierr = PetscPrintf(PETSC_COMM_SELF, "Matched %d -- %d\n", c, ja[r]);CHKERRQ(ierr);}
         match[c]      = ja[r];
         matchR[ja[r]] = c;
         break;
       }
     }
+    if (debug) {ierr = PetscPrintf(PETSC_COMM_SELF, "\n");CHKERRQ(ierr);}
   }
+  ierr = CheckUnmatched_SeqAIJ(n, match, matchR);CHKERRQ(ierr);
   /* Deal with unmatched columns */
   for (c = 0; c < n; ++c) {
     if (match[c] >= 0) continue;
@@ -97,9 +122,11 @@ static PetscErrorCode MatComputeMatching_SeqAIJ(Mat A, IS *permR, Vec *scalR, IS
         PetscReal weight1 = weights[r1] - u[ja[r1]] - v[c1];
         if ((matchR[ja[r1]] < 0) && (weight1 <= eps)) {
           /* (r, c1) in M is replaced by (r, c) and (r1, c1) */
-          ierr = PetscPrintf(PETSC_COMM_SELF, "Replaced match %d -- %d\n", c1, ja[r]);CHKERRQ(ierr);
-          ierr = PetscPrintf(PETSC_COMM_SELF, "  Added  match %d -- %d\n", c,  ja[r]);CHKERRQ(ierr);
-          ierr = PetscPrintf(PETSC_COMM_SELF, "  Added  match %d -- %d\n", c1, ja[r1]);CHKERRQ(ierr);
+          if (debug) {
+            ierr = PetscPrintf(PETSC_COMM_SELF, "Replaced match %d -- %d\n", c1, ja[r]);CHKERRQ(ierr);
+            ierr = PetscPrintf(PETSC_COMM_SELF, "  Added  match %d -- %d\n", c,  ja[r]);CHKERRQ(ierr);
+            ierr = PetscPrintf(PETSC_COMM_SELF, "  Added  match %d -- %d\n", c1, ja[r1]);CHKERRQ(ierr);
+          }
           match[c]       = ja[r];
           matchR[ja[r]]  = c;
           match[c1]      = ja[r1];
@@ -107,9 +134,26 @@ static PetscErrorCode MatComputeMatching_SeqAIJ(Mat A, IS *permR, Vec *scalR, IS
           break;
         }
       }
+      if (match[c] >= 0) break;
+    }
+  }
+  /* Complete matching */
+  ierr = CheckUnmatched_SeqAIJ(n, match, matchR);CHKERRQ(ierr);
+  for (c = 0, r = 0; c < n; ++c) {
+    if (match[c] >= n) SETERRQ2(PETSC_COMM_SELF, PETSC_ERR_PLIB, "Column %d matched to invalid row %d", c, match[c]);
+    if (match[c] <  0) {
+      for (; r < n; ++r) {
+        if (matchR[r] < 0) {
+          if (debug) {ierr = PetscPrintf(PETSC_COMM_SELF, "Matched default %d -- %d\n", c, r);CHKERRQ(ierr);}
+          match[c]  = r;
+          matchR[r] = c;
+          break;
+        }
+      }
     }
   }
   /* Check matching */
+  ierr = CheckUnmatched_SeqAIJ(n, match, matchR);CHKERRQ(ierr);
   for (c = 0; c < n; ++c) {
     if (match[c] <  0) SETERRQ1(PETSC_COMM_SELF, PETSC_ERR_PLIB, "Column %d unmatched", c);
     if (match[c] >= n) SETERRQ2(PETSC_COMM_SELF, PETSC_ERR_PLIB, "Column %d matched to invalid row %d", c, match[c]);
@@ -195,10 +239,16 @@ static PetscErrorCode MatComputeMatching_MPIAIJ(Mat A, IS *permR, Vec *scalR, IS
   ierr = VecGetArray(colMax, &a_j);CHKERRQ(ierr);
   for (c = 0; c < n; ++c) {
     for (r = iaA[c]; r < iaA[c+1]; ++r) {
-      weightsA[r] = log(a_j[c]/PetscRealPart(aA[r]));
+      PetscReal ar = PetscAbsScalar(aA[r]);
+
+      if (ar == 0.0) weightsA[r] = PETSC_MAX_REAL;
+      else           weightsA[r] = log(a_j[c]/ar);
     }
     for (r = iaB[c]; r < iaB[c+1]; ++r) {
-      weightsB[r] = log(a_j[c]/PetscRealPart(aB[r]));
+      PetscReal ar = PetscAbsScalar(aB[r]);
+
+      if (ar == 0.0) weightsB[r] = PETSC_MAX_REAL;
+      else           weightsB[r] = log(a_j[c]/ar);
     }
   }
   CHKMEMQ;
@@ -343,6 +393,19 @@ static PetscErrorCode MatComputeMatching_MPIAIJ(Mat A, IS *permR, Vec *scalR, IS
   }
   CHKMEMQ;
   ierr = PetscSynchronizedFlush(comm, NULL);CHKERRQ(ierr);
+  /* Complete matching */
+  for (c = 0, r = 0; c < n; ++c) {
+    if (match[c] >= n) SETERRQ2(PETSC_COMM_SELF, PETSC_ERR_PLIB, "Column %d matched to invalid row %d", c, match[c]);
+    if (match[c] <  0) {
+      for (; r < n; ++r) {
+        if (matchR[r] < 0) {
+          match[c]  = r;
+          matchR[r] = c;
+          break;
+        }
+      }
+    }
+  }
   /* Check matching */
   for (c = 0; c < n; ++c) {
     if (match[c] <  0) SETERRQ1(PETSC_COMM_SELF, PETSC_ERR_PLIB, "Column %d unmatched", c);
@@ -396,37 +459,94 @@ static PetscErrorCode MatComputeMatching(Mat A, IS *permR, Vec *scalR, IS *permC
 #define __FUNCT__ "CreateMatrix"
 static PetscErrorCode CreateMatrix(Mat *A)
 {
+  char           filename[PETSC_MAX_PATH_LEN];
   PetscInt       cols[2];
   PetscScalar    vals[2];
   PetscInt       N = 3, rStart, rEnd, r;
   PetscMPIInt    rank;
+  PetscBool      flg;
   PetscErrorCode ierr;
 
   PetscFunctionBeginUser;
   ierr = MatCreate(PETSC_COMM_WORLD, A);CHKERRQ(ierr);
-  ierr = MatSetSizes(*A, PETSC_DETERMINE, PETSC_DETERMINE, N, N);CHKERRQ(ierr);
-  ierr = MatSetUp(*A);CHKERRQ(ierr);
-  ierr = MatGetOwnershipRange(*A, &rStart, &rEnd);CHKERRQ(ierr);
-  /* From HC64 documentation */
-  ierr = MPI_Comm_rank(PetscObjectComm((PetscObject) *A), &rank);CHKERRQ(ierr);
-  if (!rank) {
-    r = 0;
-    cols[0] = 1;   cols[1] = 2;
-    vals[0] = 8.0; vals[1] = 3.0;
-    ierr = MatSetValues(*A, 1, &r, 2, cols, vals, ADD_VALUES);CHKERRQ(ierr);
-    r = 1;
-    cols[0] = 1;   cols[1] = 2;
-    vals[0] = 2.0; vals[1] = 1.0;
-    ierr = MatSetValues(*A, 1, &r, 2, cols, vals, ADD_VALUES);CHKERRQ(ierr);
-    r = 2;
-    cols[0] = 0;
-    vals[0] = 4.0;
-    ierr = MatSetValues(*A, 1, &r, 1, cols, vals, ADD_VALUES);CHKERRQ(ierr);
+  ierr = PetscOptionsGetString(NULL, "-filename", filename, PETSC_MAX_PATH_LEN-1, &flg);CHKERRQ(ierr);
+  if (flg) {
+    PetscViewer viewer;
+
+    ierr = PetscViewerBinaryOpen(PETSC_COMM_WORLD, filename, FILE_MODE_READ, &viewer);CHKERRQ(ierr);
+    ierr = MatLoad(*A, viewer);CHKERRQ(ierr);
+    ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
+  } else {
+    ierr = MatSetSizes(*A, PETSC_DETERMINE, PETSC_DETERMINE, N, N);CHKERRQ(ierr);
+    ierr = MatSetUp(*A);CHKERRQ(ierr);
+    ierr = MatGetOwnershipRange(*A, &rStart, &rEnd);CHKERRQ(ierr);
+    /* From HC64 documentation */
+    ierr = MPI_Comm_rank(PetscObjectComm((PetscObject) *A), &rank);CHKERRQ(ierr);
+    if (!rank) {
+      r = 0;
+      cols[0] = 1;   cols[1] = 2;
+      vals[0] = 8.0; vals[1] = 3.0;
+      ierr = MatSetValues(*A, 1, &r, 2, cols, vals, ADD_VALUES);CHKERRQ(ierr);
+      r = 1;
+      cols[0] = 1;   cols[1] = 2;
+      vals[0] = 2.0; vals[1] = 1.0;
+      ierr = MatSetValues(*A, 1, &r, 2, cols, vals, ADD_VALUES);CHKERRQ(ierr);
+      r = 2;
+      cols[0] = 0;
+      vals[0] = 4.0;
+      ierr = MatSetValues(*A, 1, &r, 1, cols, vals, ADD_VALUES);CHKERRQ(ierr);
+    }
   }
   /* Assemble */
   ierr = MatAssemblyBegin(*A, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(*A, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatViewFromOptions(*A, NULL, "-mat_view");CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+#undef __FUNCT__
+#define __FUNCT__ "OutputMatrix"
+static PetscErrorCode OutputMatrix(Mat A)
+{
+  char           filename[PETSC_MAX_PATH_LEN];
+  PetscBool      flg;
+  PetscErrorCode ierr;
+
+  PetscFunctionBeginUser;
+  ierr = PetscOptionsGetString(NULL, "-outfilename", filename, PETSC_MAX_PATH_LEN-1, &flg);CHKERRQ(ierr);
+  if (flg) {
+    PetscViewer viewer;
+
+    ierr = PetscViewerASCIIOpen(PETSC_COMM_WORLD, filename, &viewer);CHKERRQ(ierr);
+    ierr = PetscViewerSetFormat(viewer, PETSC_VIEWER_ASCII_MATRIXMARKET);CHKERRQ(ierr);
+    ierr = MatView(A, viewer);CHKERRQ(ierr);
+    ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
+  }
+  PetscFunctionReturn(0);
+}
+
+#undef __FUNCT__
+#define __FUNCT__ "CheckDiagonalWeight"
+static PetscErrorCode CheckDiagonalWeight(Mat A, const char name[])
+{
+  Vec            diag;
+  PetscScalar   *a;
+  PetscReal      weight = 0.0, gweight;
+  PetscInt       r, n;
+  PetscErrorCode ierr;
+
+  PetscFunctionBegin;
+  ierr = MatGetVecs(A, NULL, &diag);CHKERRQ(ierr);
+  ierr = MatGetDiagonal(A, diag);CHKERRQ(ierr);
+  ierr = VecGetLocalSize(diag, &n);CHKERRQ(ierr);
+  ierr = VecGetArray(diag, &a);CHKERRQ(ierr);
+  for (r = 0; r < n; ++r) {
+    weight += PetscAbsScalar(a[r]);
+  }
+  ierr = MPI_Allreduce(&weight, &gweight, 1, MPIU_REAL, MPI_PROD, PETSC_COMM_WORLD);CHKERRQ(ierr);
+  ierr = PetscPrintf(PETSC_COMM_WORLD, "Diagonal weight for %s matrix: %g\n", name, gweight);CHKERRQ(ierr);
+  ierr = VecRestoreArray(diag, &a);CHKERRQ(ierr);
+  ierr = VecDestroy(&diag);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -437,23 +557,28 @@ int main(int argc, char **argv)
   Mat            A, P;
   IS             permR, permC;
   Vec            scalR, scalC;
+  PetscBool      scale = PETSC_FALSE;
   PetscErrorCode ierr;
 
   ierr = PetscInitialize(&argc, &argv, NULL, NULL);CHKERRQ(ierr);
   ierr = CreateMatrix(&A);CHKERRQ(ierr);
   ierr = MatComputeMatching(A, &permR, &scalR, &permC, &scalC);CHKERRQ(ierr);
-  ierr = ISView(permR, NULL);CHKERRQ(ierr);
+  //ierr = ISView(permR, NULL);CHKERRQ(ierr);
   ierr = VecViewFromOptions(scalR, NULL, "-vec_view");CHKERRQ(ierr);
   ierr = VecViewFromOptions(scalC, NULL, "-vec_view");CHKERRQ(ierr);
-  ierr = MatDiagonalScale(A, scalR, scalC);CHKERRQ(ierr);
+  ierr = PetscOptionsGetBool(NULL, "-scale", &scale, NULL);CHKERRQ(ierr);
+  if (scale) {ierr = MatDiagonalScale(A, scalR, scalC);CHKERRQ(ierr);}
   ierr = MatViewFromOptions(A, NULL, "-mat_view");CHKERRQ(ierr);
   ierr = MatPermute(A, permR, permC, &P);CHKERRQ(ierr);
   ierr = MatViewFromOptions(P, NULL, "-mat_view");CHKERRQ(ierr);
+  ierr = CheckDiagonalWeight(A, scale ? "scaled" : "original");CHKERRQ(ierr);
+  ierr = CheckDiagonalWeight(P, scale ? "permuted and scaled" : "permuted");CHKERRQ(ierr);
   ierr = ISDestroy(&permR);CHKERRQ(ierr);
   ierr = ISDestroy(&permC);CHKERRQ(ierr);
   ierr = VecDestroy(&scalR);CHKERRQ(ierr);
   ierr = VecDestroy(&scalC);CHKERRQ(ierr);
   ierr = MatDestroy(&A);CHKERRQ(ierr);
+  ierr = OutputMatrix(P);CHKERRQ(ierr);
   ierr = MatDestroy(&P);CHKERRQ(ierr);
   ierr = PetscFinalize();
   return 0;
