@@ -1,0 +1,7 @@
+*.o
+testbed
+src/spectralPartition
+src/testbed2
+src/wbm
+*.info
+*.mtx
