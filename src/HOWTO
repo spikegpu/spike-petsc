@@ -1,0 +1,5 @@
+Test full solve:
+PETSC_OPTIONS="-malloc_test -cublas 0" ./testbed -mat ../share/matrices/ABACUS_shell_ud.bin -mat_ordering_type awbm -mat_ordering_type2 rcm -view_mat -draw_pause 2 -ksp_converged_reason -ksp_max_it 100 -pc_type lu -ksp_monitor
+
+Convert reordered file to Matrix Market:
+./wbm -filename ../share/matrices/finan512.bin  -outfilename finan512-perm.mtx -mat_view draw
