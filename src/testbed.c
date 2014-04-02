@@ -311,7 +311,7 @@ int main(int argc,char **args)
   if (ctx.viewSol) {ierr = VecView(u, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);}
   /* Create linear solver */
   ierr = KSPCreate(PetscObjectComm((PetscObject) A), &ksp);CHKERRQ(ierr);
-  ierr = KSPSetOperators(ksp, A, B, DIFFERENT_NONZERO_PATTERN);CHKERRQ(ierr);
+  ierr = KSPSetOperators(ksp, A, B);CHKERRQ(ierr);
   ierr = KSPSetFromOptions(ksp);CHKERRQ(ierr);
   ierr = KSPSolve(ksp, b, x);CHKERRQ(ierr);
   /* Check the error */
