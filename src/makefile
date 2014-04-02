@@ -2,8 +2,8 @@ testbed: testbed.o petsc_mat_awbm.o petsc_mat_wbm.o hslmc64.o
 	-${CLINKER} -o testbed testbed.o petsc_mat_awbm.o petsc_mat_wbm.o hslmc64.o ${PETSC_LIB}
 	#${RM} testbed.o petsc_mat_awbm.o petsc_mat_wbm.o hslmc64.o
 
-testbed2: testbed2.o matbanded.o kspreorder.o petsc_mat_awbm.o petsc_mat_wbm.o hslmc64.o
-	-${CLINKER} -o testbed2 testbed2.o matbanded.o kspreorder.o petsc_mat_awbm.o petsc_mat_wbm.o hslmc64.o ${PETSC_LIB}
+testbed2: testbed2.o matbanded.o kspreorder.o petsc_mat_awbm.o petsc_mat_wbm.o hslmc64.o petsc_mat_fiedler.o hslmc73f.o
+	-${CLINKER} -o testbed2 testbed2.o matbanded.o kspreorder.o petsc_mat_awbm.o petsc_mat_wbm.o hslmc64.o petsc_mat_fiedler.o hslmc73f.o -L. -lhsl_mc73 ${PETSC_LIB}
 	#${RM} testbed2.o matbanded.o kspreorder.o petsc_mat_awbm.o petsc_mat_wbm.o hslmc64.o
 
 spectralPartition: spectralPartition.o

@@ -51,6 +51,7 @@ PetscErrorCode ProcessOptions(AppCtx *options)
 
 extern PetscErrorCode MatGetOrdering_WBM(Mat, MatOrderingType, IS *, IS *);
 extern PetscErrorCode MatGetOrdering_AWBM(Mat, MatOrderingType, IS *, IS *);
+extern PetscErrorCode MatGetOrdering_Fiedler(Mat, MatOrderingType, IS *, IS *);
 
 extern PetscErrorCode PCCreate_Banded(PC);
 extern PetscErrorCode KSPCreate_Reorder(KSP);
@@ -64,6 +65,7 @@ PetscErrorCode LoadModules(AppCtx *options)
   PetscFunctionBegin;
   ierr = MatOrderingRegister("wbm",  MatGetOrdering_WBM);CHKERRQ(ierr);
   ierr = MatOrderingRegister("awbm", MatGetOrdering_AWBM);CHKERRQ(ierr);
+  ierr = MatOrderingRegister("fiedler",  MatGetOrdering_Fiedler);CHKERRQ(ierr);
 
   ierr = PCRegister("banded", PCCreate_Banded);CHKERRQ(ierr);
   ierr = KSPRegister("reorder", KSPCreate_Reorder);CHKERRQ(ierr);
